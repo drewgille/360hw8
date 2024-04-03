@@ -155,109 +155,13 @@ plot(colMeans(SIGMA_n), colMeans(SIGMA_d),
      ylab = "Posterior Mean of Covariance Matrix 2",
      main = "Posterior Means of Covariance Matrices",
      pch = 19, col = "blue")
+line <- lm(colMeans(SIGMA_d)~colMeans(SIGMA_n))
+abline(line)
 ```
 
-```{r}
-library(knitr)
-
-#### Function for posterior quantile intervals for matrices
-#### From the `sbgcop` package
-plotci.sA<-function(sA, ylabs = colnames(sA[, , 1]), mgp = c(1.75, 0.75, 
-    0)) 
-{
-    qA <- qM.sM(sA)
-    p <- dim(qA)[1]
-    tmp <- c(qA)
-    tmp <- tmp[tmp != 1]
-    par(mgp = mgp)
-    for (j in 1:p) {
-        plot(0, 0, type = "n", ylim = range(c(tmp), na.rm = TRUE), 
-            xlim = c(1, p), ylab = ylabs[j], xaxt = "n", xlab = "")
-        points((1:p)[-j], qA[j, -j, 2], pch = 16, cex = 0.6)
-        segments(x0 = (1:p)[-j], y0 = qA[j, -j, 1], x1 = (1:p)[-j], 
-            y1 = qA[j, -j, 3])
-        abline(h = 0, col = "gray")
-        abline(v = j, col = "gray")
-    }
-    axis(side = 1, at = 1:p, labels = colnames(qA[, , 1]), las = 2)
-}
-
-sR.sC<-function(sC) 
-{
-    p <- dim(sC)[1]
-    s <- dim(sC)[3]
-    sR <- array(dim = c(p, p, s))
-    dimnames(sR) <- dimnames(sC)
-    for (l in 1:s) {
-        C <- sC[, , l]
-        R <- C * NA
-        for (j in 1:p) {
-            R[j, -j] <- C[j, -j] %*% solve(C[-j, -j])
-        }
-        sR[, , l] <- R
-    }
-    sR
-}
-
-qM.sM<-function (sM, quantiles = c(0.025, 0.5, 0.975)) 
-{
-    p1 <- dim(sM)[1]
-    p2 <- dim(sM)[2]
-    s <- dim(sM)[3]
-    qM <- array(dim = c(p1, p2, length(quantiles)))
-    dimnames(qM) <- list(dimnames(sM)[[1]], dimnames(sM)[[2]], 
-        paste(quantiles * 100, rep("% quantile", length(quantiles)), 
-            sep = ""))
-    for (l in 1:length(quantiles)) {
-        qM[, , l] <- apply(sM, c(1, 2), quantile, prob = quantiles[l], 
-            na.rm = TRUE)
-    }
-    qM
-}
-
-######
+The entries of the two covariance matrices are positively correlated. This visualization makes it apparent that the variance of glucose is high for both groups when compared to that of the other covariates.
 
 
-
-p <- 7
-
-COR <- array( dim=c(p,p,S) ) 
-
-for(s in 1:S){
-Sig <- matrix( SIGMA_d[s,] ,nrow=p,ncol=p)
-COR[ , ,s] <- Sig/sqrt( outer( diag(Sig),diag(Sig) ) )
-}
-
-apply(COR, c(1,2), quantile,prob=c(.025,.975))
-
-pdf("cor_graph.pdf",height=6,width=6,family="Times")
-
-par(mfcol=c(7,2),mar=c(1,2.75,1,1),mgp=c(1.75,.75,0),oma=c(1.5,0,0,0))
-
-
-plotci.sA(COR)
-
-REG<-sR.sC(COR)
-plotci.sA(REG)
-dev.off()
-
-
-CQ<-apply(COR, c(1,2), quantile,prob=c(.025,.5,.975) )
-
-round(CQ[1,,],2)
-round(CQ[2,,],2)
-round(CQ[3,,],2)
-
-round(apply(COR,c(1,2),mean),2)
-
-
-```
-
-```{r}
-knitr::include_graphics("cor_graph.pdf")
-```
-
-There do not seem to be many significant differences between the two groups. One difference we see is that
 
 # 4
 
@@ -284,7 +188,7 @@ Y <- readRDS("hw8train.rds")
 n<-dim(Y)[1] ; p<-dim(Y)[2]
 mu0<-c(rep(0,14))
 sd0<-(mu0/2)
-L0<-matrix(.1,p,p) ; diag(L0)<-1 ; L0<-L0*outer(sd0,sd0)
+L0<-matrix(0,p,p) ; diag(L0)<-1 # ; L0<-L0*outer(sd0,sd0)
 nu0<-p+2 ; S0<-L0
 ###
 
@@ -292,4 +196,45 @@ nu0<-p+2 ; S0<-L0
 Sigma<-S0
 Y.full<-Y
 O<-1*(!is.na(Y))
+for(j in 1:p)
+{ 
+  Y.full[is.na(Y.full[,j]),j]<-mean(Y.full[,j],na.rm=TRUE) 
+}
+###
+
+### Gibbs sampler
+THETA<-SIGMA<-Y.MISS<-NULL
+set.seed(1)
+for(s in 1:1000)
+{
+
+  ###update theta
+  ybar<-apply(Y.full,2,mean)
+  Ln<-solve( solve(L0) + n*solve(Sigma) )
+  mun<-Ln%*%( solve(L0)%*%mu0 + n*solve(Sigma)%*%ybar )
+  theta<-rmvnorm(1,mun,Ln)
+  ###
+
+  ###update Sigma
+  Sn<- S0 + ( t(Y.full)-c(theta) )%*%t( t(Y.full)-c(theta) )
+  Sigma<-solve( rwish(1, nu0+n, solve(Sn)) )
+  ###
+
+  ###update missing data
+  for(i in 1:n)
+  {
+    b <- ( O[i,]==0 )
+    a <- ( O[i,]==1 )
+    iSa<- solve(Sigma[a,a])
+    beta.j <- Sigma[b,a]%*%iSa
+    Sigma.j   <- Sigma[b,b] - Sigma[b,a]%*%iSa%*%Sigma[a,b]
+    theta.j<- theta[b] + beta.j%*%(t(Y.full[i,a])-theta[a])
+    Y.full[i,b] <- rmvnorm(1,theta.j,Sigma.j )
+  }
+
+  ### save results
+  THETA<-rbind(THETA,theta) ; SIGMA<-rbind(SIGMA,c(Sigma))
+  Y.MISS<-rbind(Y.MISS, Y.full[O==0] )
+  ###
+}
 ```
