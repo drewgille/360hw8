@@ -1,6 +1,8 @@
 ---
 title: "hw8"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 date: "2024-03-29"
 ---
 
@@ -12,19 +14,11 @@ library(MASS)
 ```
 
 ```{r}
-#diabetes <- read.csv("diabetes.csv")
-#diabetics <- diabetes %>%
-#  filter(diabetes=="Yes")
-#nondiabetics <- diabetes %>%
-#  filter(diabetes=="No")
-```
-
-```{r}
 Y <- read.table("http://www2.stat.duke.edu/~pdh10/FCBS/Exercises/azdiabetes.dat", header=TRUE)
-diabetics <- diabetes %>%
+diabetics <- Y %>%
   filter(diabetes=="Yes")
 Y_d <- diabetics[, 1:7]
-nondiabetics <- diabetes %>%
+nondiabetics <- Y %>%
   filter(diabetes=="No")
 Y_n <- nondiabetics[, 1:7]
 ```
@@ -136,24 +130,94 @@ for (s in 1:S){
 colMeans(THETA_n) - colMeans(THETA_d)
 ```
 
-The glucose of diabetics seems to be, on average, much higher than that of non-diabetics.
+```{r}
+apply(THETA_n, 2, var) - apply(THETA_d, 2, var)
+```
 
+The glucose of diabetics seems to be, on average, much higher than that of non-diabetics. Additionally, the variance of glucose is much greater for diabetics than it is for non-diabetics.
 
 ```{r}
 colMeans(THETA_d > THETA_n)
 ```
 
-Pr(θd,j \> θn,j\|Y) = 1 for all j $\in$ {1, 2, 3, 4, 5, 6, 7}.
-
-
+$Pr(\theta_{d,j} > \theta_{n,j}|Y) = 1$ for all j $\in$ {1, 2, 3, 4, 5, 6, 7}.
 
 # 2b
 
 ```{r}
 colMeans(SIGMA_n) - colMeans(SIGMA_d)
 ```
+The 2,2 entry corresponds to glucose, so this supports our observation that the variability in glucose is especially high in diabetics. 
+
 ```{r}
-library(plotci)
+plot(colMeans(SIGMA_n), colMeans(SIGMA_d), 
+     xlab = "Posterior Mean of Covariance Matrix 1",
+     ylab = "Posterior Mean of Covariance Matrix 2",
+     main = "Posterior Means of Covariance Matrices",
+     pch = 19, col = "blue")
+```
+
+```{r}
+library(knitr)
+
+#### Function for posterior quantile intervals for matrices
+#### From the `sbgcop` package
+plotci.sA<-function(sA, ylabs = colnames(sA[, , 1]), mgp = c(1.75, 0.75, 
+    0)) 
+{
+    qA <- qM.sM(sA)
+    p <- dim(qA)[1]
+    tmp <- c(qA)
+    tmp <- tmp[tmp != 1]
+    par(mgp = mgp)
+    for (j in 1:p) {
+        plot(0, 0, type = "n", ylim = range(c(tmp), na.rm = TRUE), 
+            xlim = c(1, p), ylab = ylabs[j], xaxt = "n", xlab = "")
+        points((1:p)[-j], qA[j, -j, 2], pch = 16, cex = 0.6)
+        segments(x0 = (1:p)[-j], y0 = qA[j, -j, 1], x1 = (1:p)[-j], 
+            y1 = qA[j, -j, 3])
+        abline(h = 0, col = "gray")
+        abline(v = j, col = "gray")
+    }
+    axis(side = 1, at = 1:p, labels = colnames(qA[, , 1]), las = 2)
+}
+
+sR.sC<-function(sC) 
+{
+    p <- dim(sC)[1]
+    s <- dim(sC)[3]
+    sR <- array(dim = c(p, p, s))
+    dimnames(sR) <- dimnames(sC)
+    for (l in 1:s) {
+        C <- sC[, , l]
+        R <- C * NA
+        for (j in 1:p) {
+            R[j, -j] <- C[j, -j] %*% solve(C[-j, -j])
+        }
+        sR[, , l] <- R
+    }
+    sR
+}
+
+qM.sM<-function (sM, quantiles = c(0.025, 0.5, 0.975)) 
+{
+    p1 <- dim(sM)[1]
+    p2 <- dim(sM)[2]
+    s <- dim(sM)[3]
+    qM <- array(dim = c(p1, p2, length(quantiles)))
+    dimnames(qM) <- list(dimnames(sM)[[1]], dimnames(sM)[[2]], 
+        paste(quantiles * 100, rep("% quantile", length(quantiles)), 
+            sep = ""))
+    for (l in 1:length(quantiles)) {
+        qM[, , l] <- apply(sM, c(1, 2), quantile, prob = quantiles[l], 
+            na.rm = TRUE)
+    }
+    qM
+}
+
+######
+
+
 
 p <- 7
 
@@ -166,12 +230,17 @@ COR[ , ,s] <- Sig/sqrt( outer( diag(Sig),diag(Sig) ) )
 
 apply(COR, c(1,2), quantile,prob=c(.025,.975))
 
+pdf("cor_graph.pdf",height=6,width=6,family="Times")
+
 par(mfcol=c(7,2),mar=c(1,2.75,1,1),mgp=c(1.75,.75,0),oma=c(1.5,0,0,0))
+
+
 plotci.sA(COR)
 
 REG<-sR.sC(COR)
 plotci.sA(REG)
 dev.off()
+
 
 CQ<-apply(COR, c(1,2), quantile,prob=c(.025,.5,.975) )
 
@@ -180,5 +249,47 @@ round(CQ[2,,],2)
 round(CQ[3,,],2)
 
 round(apply(COR,c(1,2),mean),2)
+
+
 ```
 
+```{r}
+knitr::include_graphics("cor_graph.pdf")
+```
+
+There do not seem to be many significant differences between the two groups. One difference we see is that
+
+# 4
+
+```{r}
+Y<-dget(url("http://www2.stat.duke.edu/~pdh10/FCBS/Inline/Y.pima.miss"))
+```
+
+```{r}
+Y=Y%>%
+  filter(!is.na(glu))%>%
+  filter(!is.na(bp))%>%
+  filter(!is.na(skin))%>%
+  filter(!is.na(bmi))
+colMeans(Y)
+```
+
+```{r}
+###
+Y <- readRDS("hw8train.rds")
+```
+
+```{r}
+### prior parameters 
+n<-dim(Y)[1] ; p<-dim(Y)[2]
+mu0<-c(rep(0,14))
+sd0<-(mu0/2)
+L0<-matrix(.1,p,p) ; diag(L0)<-1 ; L0<-L0*outer(sd0,sd0)
+nu0<-p+2 ; S0<-L0
+###
+
+### starting values
+Sigma<-S0
+Y.full<-Y
+O<-1*(!is.na(Y))
+```
