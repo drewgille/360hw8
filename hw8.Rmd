@@ -1,0 +1,184 @@
+---
+title: "hw8"
+output: html_document
+date: "2024-03-29"
+---
+
+# 2a
+
+```{r}
+library(dplyr)
+library(MASS) 
+```
+
+```{r}
+#diabetes <- read.csv("diabetes.csv")
+#diabetics <- diabetes %>%
+#  filter(diabetes=="Yes")
+#nondiabetics <- diabetes %>%
+#  filter(diabetes=="No")
+```
+
+```{r}
+Y <- read.table("http://www2.stat.duke.edu/~pdh10/FCBS/Exercises/azdiabetes.dat", header=TRUE)
+diabetics <- diabetes %>%
+  filter(diabetes=="Yes")
+Y_d <- diabetics[, 1:7]
+nondiabetics <- diabetes %>%
+  filter(diabetes=="No")
+Y_n <- nondiabetics[, 1:7]
+```
+
+```{r}
+mu0_d <- colMeans(diabetics[, 1:7])
+samp_cov_d <- cov(diabetics[, 1:7])
+lambda0_d <- cov(diabetics[, 1:7])
+S0_d <- samp_cov_d
+nu0_d <- 9
+
+mu0_n <- colMeans(nondiabetics[, 1:7])
+samp_cov_n <- cov(nondiabetics[, 1:7])
+lambda0_n <- cov(nondiabetics[, 1:7])
+S0_n <- samp_cov_n
+nu0_n <- 9
+```
+
+```{r}
+### Simulate multivariate normal vector
+rmvnorm<-function(n,mu,Sigma)
+{
+  p<-length(mu)
+  res<-matrix(0,nrow=n,ncol=p)
+  if(n>0 & p>0) 
+  {
+    E<-matrix(rnorm(n*p),n,p)
+    res<-t(  t(E%*%chol(Sigma)) +c(mu))
+  }
+  res
+}
+
+### Simulate from the Wishart distribution
+rwish<-function(n,nu0,S0)
+{
+  sS0 <- chol(S0)
+  S<-array( dim=c( dim(S0),n ) )
+  for(i in 1:n)
+  {
+     Z <- matrix(rnorm(nu0 * dim(S0)[1]), nu0, dim(S0)[1]) %*% sS0
+     S[,,i]<- t(Z)%*%Z
+  }
+  S[,,1:n]
+}
+
+```
+
+```{r}
+### Gibbs sampler
+
+Sigma_d <- samp_cov_d
+n_d<-dim(Y_d)[1]
+S0_d <- samp_cov_d
+THETA_d <- NULL
+SIGMA_d <- NULL
+
+Sigma_n <- samp_cov_n
+n_n<-dim(Y_n)[1]
+S0_n <- samp_cov_n
+THETA_n <- NULL
+SIGMA_n <- NULL
+
+S <- 500
+
+for (s in 1:S){
+    ###update theta_d
+  Ln_d<-solve( solve(lambda0_d) + n_d*solve(Sigma_d) )
+  mun_d<-Ln_d%*%( solve(lambda0_d)%*%mu0_d + n_d*solve(Sigma_d)%*%mu0_d )
+  theta_d<-rmvnorm(1,mun_d,Ln_d)
+  ###
+  
+    ###update Sigma_d
+  Sn_d<- S0_d + ( t(Y_d)-c(theta_d) )%*%t( t(Y_d)-c(theta_d) )
+  Sigma_d<-solve( rwish(1, nu0_d+n_d, solve(Sn_d)) )
+  ###
+  
+    ### save results
+  THETA_d<-rbind(THETA_d,theta_d) ; SIGMA_d<-rbind(SIGMA_d,c(Sigma_d))
+  ###
+  
+  
+  
+  
+  
+      ###update theta_n
+  Ln_n<-solve( solve(lambda0_n) + n_n*solve(Sigma_n) )
+  mun_n<-Ln_n%*%( solve(lambda0_n)%*%mu0_n + n_n*solve(Sigma_n)%*%mu0_n )
+  theta_n<-rmvnorm(1,mun_n,Ln_n)
+  ###
+  
+    ###update Sigma_n
+  Sn_n<- S0_n + ( t(Y_n)-c(theta_n) )%*%t( t(Y_n)-c(theta_n) )
+  Sigma_n<-solve( rwish(1, nu0_d+n_n, solve(Sn_n)) )
+  ###
+  
+    ### save results
+  THETA_n<-rbind(THETA_n,theta_n) ; SIGMA_n<-rbind(SIGMA_n,c(Sigma_n))
+  ###
+  
+  if (s %% 100 == 0){
+    print(s)
+  }
+  
+}
+
+```
+
+```{r}
+colMeans(THETA_n) - colMeans(THETA_d)
+```
+
+The glucose of diabetics seems to be, on average, much higher than that of non-diabetics.
+
+
+```{r}
+colMeans(THETA_d > THETA_n)
+```
+
+Pr(θd,j \> θn,j\|Y) = 1 for all j $\in$ {1, 2, 3, 4, 5, 6, 7}.
+
+
+
+# 2b
+
+```{r}
+colMeans(SIGMA_n) - colMeans(SIGMA_d)
+```
+```{r}
+library(plotci)
+
+p <- 7
+
+COR <- array( dim=c(p,p,S) ) 
+
+for(s in 1:S){
+Sig <- matrix( SIGMA_d[s,] ,nrow=p,ncol=p)
+COR[ , ,s] <- Sig/sqrt( outer( diag(Sig),diag(Sig) ) )
+}
+
+apply(COR, c(1,2), quantile,prob=c(.025,.975))
+
+par(mfcol=c(7,2),mar=c(1,2.75,1,1),mgp=c(1.75,.75,0),oma=c(1.5,0,0,0))
+plotci.sA(COR)
+
+REG<-sR.sC(COR)
+plotci.sA(REG)
+dev.off()
+
+CQ<-apply(COR, c(1,2), quantile,prob=c(.025,.5,.975) )
+
+round(CQ[1,,],2)
+round(CQ[2,,],2)
+round(CQ[3,,],2)
+
+round(apply(COR,c(1,2),mean),2)
+```
+
