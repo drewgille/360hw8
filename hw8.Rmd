@@ -81,7 +81,7 @@ S0_n <- samp_cov_n
 THETA_n <- NULL
 SIGMA_n <- NULL
 
-S <- 500
+S <- 10000
 
 for (s in 1:S){
     ###update theta_d
@@ -205,7 +205,8 @@ for(j in 1:p)
 ### Gibbs sampler
 THETA<-SIGMA<-Y.MISS<-NULL
 set.seed(1)
-for(s in 1:10)
+S<-1000
+for(s in 1:S)
 {
 
   ###update theta
