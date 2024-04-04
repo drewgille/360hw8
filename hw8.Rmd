@@ -163,7 +163,7 @@ The entries of the two covariance matrices are positively correlated. This visua
 
 
 
-# 4
+# 4b
 
 ```{r}
 Y<-dget(url("http://www2.stat.duke.edu/~pdh10/FCBS/Inline/Y.pima.miss"))
@@ -205,7 +205,7 @@ for(j in 1:p)
 ### Gibbs sampler
 THETA<-SIGMA<-Y.MISS<-NULL
 set.seed(1)
-for(s in 1:1000)
+for(s in 1:10)
 {
 
   ###update theta
@@ -221,14 +221,23 @@ for(s in 1:1000)
   ###
 
   ###update missing data
-  for(i in 1:n)
+  for(i in 60:n)
   {
     b <- ( O[i,]==0 )
+    #print(b)
     a <- ( O[i,]==1 )
+    #print(a)
     iSa<- solve(Sigma[a,a])
     beta.j <- Sigma[b,a]%*%iSa
     Sigma.j   <- Sigma[b,b] - Sigma[b,a]%*%iSa%*%Sigma[a,b]
-    theta.j<- theta[b] + beta.j%*%(t(Y.full[i,a])-theta[a])
+    #print(dim(beta.j))
+    #print(dim(t(Y.full[i,a])))
+    #print(theta)
+    #print(dim(theta))
+    #print(theta[a])
+    #print(dim(theta[a]))
+    #print(matrix(theta[a]))
+    theta.j<- matrix(theta[b]) + beta.j%*%matrix((t(Y.full[i,a])-theta[a]))
     Y.full[i,b] <- rmvnorm(1,theta.j,Sigma.j )
   }
 
@@ -238,3 +247,33 @@ for(s in 1:1000)
   ###
 }
 ```
+
+# 4c
+
+```{r}
+## compare to test dataset  
+Y.true<-readRDS("hw8test.rds")
+
+V<-matrix(1:p,nrow=n,ncol=p,byrow=TRUE)
+
+v.miss<-V[O==0]
+y.pred<-apply(Y.MISS,2,mean)
+y.true<-Y.true#[O==0]
+par(mfrow=c(2,2),mar=c(3,3,1,1),mgp=c(1.75,.75,0))
+for(j in 8:p){ 
+  #print(y.pred[v.miss==j])
+  #print(y.true[v.miss==j])
+  plot(y.true[v.miss==j], y.pred[v.miss==j], 
+          xlab=paste("true", colnames(Y.true)[j]), 
+          ylab=paste("predictied", colnames(Y.true)[j]),pch=16, 
+          xlim=range(c(y.pred[v.miss==j],y.true[v.miss==j])),
+          ylim=range(c(y.pred[v.miss==j],y.true[v.miss==j]))) 
+          abline(0,1)
+  cat(j, mean( (y.true[v.miss==j]- y.pred[v.miss==j])^2), 
+         mean( (y.true[v.miss==j]- mean(Y[,j],na.rm=TRUE))^2),"\n") 
+}
+```
+
+The error of our predicted values is less than the error of $\hat{\theta}_B$.
+
+
